@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>HinglishSense — Sentiment Analysis</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg:       #080b12;
+    --surface:  #0e1420;
+    --card:     #121826;
+    --border:   rgba(255,255,255,0.07);
+    --border2:  rgba(255,255,255,0.12);
+    --text:     #e8edf5;
+    --muted:    #6b7a99;
+    --accent:   #5b7fff;
+    --accent2:  #a78bfa;
+    --pos:      #34d399;
+    --neg:      #f87171;
+    --neu:      #fbbf24;
+    --pos-bg:   rgba(52,211,153,0.08);
+    --neg-bg:   rgba(248,113,113,0.08);
+    --neu-bg:   rgba(251,191,36,0.08);
+    --glow:     rgba(91,127,255,0.15);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Noise texture overlay ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.035'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 0;
+  }
+
+  /* ── Ambient glow blobs ── */
+  .blob {
+    position: fixed; border-radius: 50%;
+    filter: blur(120px); pointer-events: none; z-index: 0;
+  }
+  .blob-1 { width: 600px; height: 600px; background: rgba(91,127,255,0.06); top: -200px; left: -100px; }
+  .blob-2 { width: 500px; height: 500px; background: rgba(167,139,250,0.05); bottom: -100px; right: -100px; }
+  .blob-3 { width: 300px; height: 300px; background: rgba(52,211,153,0.04); top: 40%; left: 50%; transform: translateX(-50%); }
+
+  /* ── Layout ── */
+  .shell {
+    position: relative; z-index: 1;
+    max-width: 1100px; margin: 0 auto;
+    padding: 0 24px 80px;
+  }
+
+  /* ── Header ── */
+  header {
+    padding: 40px 0 48px;
+    display: flex; align-items: flex-start; justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 56px;
+    animation: fadeDown 0.7s ease both;
+  }
+  .logo-group { display: flex; flex-direction: column; gap: 6px; }
+  .logo {
+    font-family: 'Syne', sans-serif;
+    font-size: 28px; font-weight: 800;
+    letter-spacing: -0.5px;
+    background: linear-gradient(135deg, #fff 30%, var(--accent2));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .logo span { color: var(--accent); -webkit-text-fill-color: var(--accent); }
+  .tagline {
+    font-size: 12px; font-weight: 300; letter-spacing: 2px;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .badge {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 14px; border-radius: 100px;
+    background: rgba(91,127,255,0.1);
+    border: 1px solid rgba(91,127,255,0.2);
+    font-size: 12px; color: var(--accent); font-weight: 500;
+    font-family: 'DM Mono', monospace;
+  }
+  .badge::before {
+    content: ''; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent); animation: pulse 2s infinite;
+  }
+
+  /* ── Main grid ── */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 24px;
+    align-items: start;
+  }
+
+  /* ── Card base ── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 32px;
+    position: relative;
+    overflow: hidden;
+  }
+  .card::before {
+    content: ''; position: absolute;
+    inset: 0; border-radius: 20px;
+    background: linear-gradient(135deg, rgba(255,255,255,0.02) 0%, transparent 60%);
+    pointer-events: none;
+  }
+
+  /* ── Input card ── */
+  .input-card { animation: fadeUp 0.6s 0.1s ease both; }
+  .card-label {
+    font-family: 'Syne', sans-serif;
+    font-size: 11px; font-weight: 700;
+    letter-spacing: 2.5px; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 20px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .card-label::after {
+    content: ''; flex: 1; height: 1px; background: var(--border);
+  }
+
+  .input-wrap { position: relative; }
+  textarea {
+    width: 100%;
+    min-height: 160px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border2);
+    border-radius: 14px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 16px; font-weight: 300;
+    line-height: 1.7;
+    padding: 20px;
+    resize: vertical;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    outline: none;
+  }
+  textarea::placeholder { color: var(--muted); font-style: italic; }
+  textarea:focus {
+    border-color: rgba(91,127,255,0.5);
+    box-shadow: 0 0 0 3px rgba(91,127,255,0.08), inset 0 0 20px rgba(91,127,255,0.02);
+  }
+
+  .char-count {
+    position: absolute; bottom: 12px; right: 16px;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px; color: var(--muted);
+    pointer-events: none;
+  }
+
+  /* ── Example chips ── */
+  .examples-label {
+    font-size: 11px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 1.5px;
+    margin: 20px 0 10px;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
+  .chip {
+    padding: 6px 14px;
+    border-radius: 100px;
+    border: 1px solid var(--border2);
+    background: transparent;
+    color: var(--muted);
+    font-size: 13px; font-family: 'DM Sans', sans-serif;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .chip:hover {
+    border-color: var(--accent);
+    color: var(--text);
+    background: rgba(91,127,255,0.08);
+    transform: translateY(-1px);
+  }
+
+  /* ── Analyze button ── */
+  .btn-analyze {
+    width: 100%;
+    padding: 16px;
+    border-radius: 14px;
+    border: none;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: #fff;
+    font-family: 'Syne', sans-serif;
+    font-size: 15px; font-weight: 700;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    position: relative; overflow: hidden;
+    transition: transform 0.15s, box-shadow 0.15s;
+    box-shadow: 0 4px 24px rgba(91,127,255,0.25);
+  }
+  .btn-analyze:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 32px rgba(91,127,255,0.4);
+  }
+  .btn-analyze:active { transform: translateY(0); }
+  .btn-analyze::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.15), transparent);
+    pointer-events: none;
+  }
+  .btn-analyze.loading { pointer-events: none; opacity: 0.8; }
+  .btn-text { display: flex; align-items: center; justify-content: center; gap: 10px; }
+
+  /* ── Spinner ── */
+  .spinner {
+    width: 18px; height: 18px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: none;
+  }
+  .loading .spinner { display: block; }
+  .loading .btn-label { display: none; }
+  .idle .spinner { display: none; }
+  .idle .btn-label { display: block; }
+
+  /* ── Results panel ── */
+  .results-panel { animation: fadeUp 0.6s 0.2s ease both; }
+
+  /* ── Sentiment result ── */
+  .result-hero {
+    display: flex; flex-direction: column;
+    align-items: center; text-align: center;
+    padding: 32px 24px;
+    border-radius: 16px;
+    margin-bottom: 20px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.02);
+    transition: all 0.4s ease;
+    min-height: 180px;
+    justify-content: center;
+  }
+  .result-hero.positive { background: var(--pos-bg); border-color: rgba(52,211,153,0.2); }
+  .result-hero.negative { background: var(--neg-bg); border-color: rgba(248,113,113,0.2); }
+  .result-hero.neutral  { background: var(--neu-bg); border-color: rgba(251,191,36,0.2);  }
+
+  .sentiment-icon { font-size: 48px; margin-bottom: 12px; line-height: 1; }
+  .sentiment-label {
+    font-family: 'Syne', sans-serif;
+    font-size: 32px; font-weight: 800;
+    letter-spacing: -1px;
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+  .positive .sentiment-label { color: var(--pos); }
+  .negative .sentiment-label { color: var(--neg); }
+  .neutral  .sentiment-label { color: var(--neu); }
+
+  .confidence-text {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px; color: var(--muted);
+  }
+
+  /* ── Confidence bars ── */
+  .conf-bars { display: flex; flex-direction: column; gap: 12px; }
+  .conf-row { display: flex; flex-direction: column; gap: 6px; }
+  .conf-meta {
+    display: flex; justify-content: space-between;
+    font-size: 12px;
+  }
+  .conf-name {
+    font-weight: 500; text-transform: capitalize; font-size: 13px;
+  }
+  .conf-val {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px; color: var(--muted);
+  }
+  .conf-track {
+    height: 6px; border-radius: 100px;
+    background: rgba(255,255,255,0.06); overflow: hidden;
+  }
+  .conf-fill {
+    height: 100%; border-radius: 100px;
+    transition: width 0.8s cubic-bezier(0.16,1,0.3,1);
+    width: 0%;
+  }
+  .fill-pos { background: linear-gradient(90deg, var(--pos), #6ee7b7); }
+  .fill-neg { background: linear-gradient(90deg, var(--neg), #fca5a5); }
+  .fill-neu { background: linear-gradient(90deg, var(--neu), #fde68a); }
+
+  /* ── Empty state ── */
+  .empty-state {
+    display: flex; flex-direction: column;
+    align-items: center; text-align: center;
+    padding: 48px 24px; gap: 12px;
+    color: var(--muted);
+  }
+  .empty-icon { font-size: 40px; opacity: 0.4; }
+  .empty-text { font-size: 14px; line-height: 1.6; max-width: 200px; }
+
+  /* ── History ── */
+  .history-section {
+    margin-top: 24px;
+    animation: fadeUp 0.6s 0.3s ease both;
+  }
+  .history-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .section-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 13px; font-weight: 700;
+    letter-spacing: 2px; text-transform: uppercase;
+    color: var(--muted);
+  }
+  .btn-clear {
+    background: none; border: none;
+    font-size: 11px; color: var(--muted);
+    cursor: pointer; font-family: 'DM Sans', sans-serif;
+    letter-spacing: 1px; text-transform: uppercase;
+    transition: color 0.2s;
+  }
+  .btn-clear:hover { color: var(--neg); }
+
+  .history-list { display: flex; flex-direction: column; gap: 10px; }
+  .history-item {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 16px; border-radius: 12px;
+    background: var(--card); border: 1px solid var(--border);
+    cursor: pointer; transition: all 0.2s;
+    animation: fadeIn 0.3s ease both;
+  }
+  .history-item:hover {
+    border-color: var(--border2);
+    background: rgba(255,255,255,0.03);
+    transform: translateX(3px);
+  }
+  .h-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .h-dot.positive { background: var(--pos); box-shadow: 0 0 8px var(--pos); }
+  .h-dot.negative { background: var(--neg); box-shadow: 0 0 8px var(--neg); }
+  .h-dot.neutral  { background: var(--neu); box-shadow: 0 0 8px var(--neu); }
+  .h-text {
+    flex: 1; font-size: 13px; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .h-badge {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px; font-weight: 400;
+    padding: 3px 8px; border-radius: 100px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    flex-shrink: 0;
+  }
+  .h-badge.positive { background: var(--pos-bg); color: var(--pos); }
+  .h-badge.negative { background: var(--neg-bg); color: var(--neg); }
+  .h-badge.neutral  { background: var(--neu-bg); color: var(--neu); }
+
+  /* ── Stats strip ── */
+  .stats-strip {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 12px; margin-top: 24px;
+    animation: fadeUp 0.6s 0.4s ease both;
+  }
+  .stat-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 18px;
+    text-align: center;
+  }
+  .stat-val {
+    font-family: 'Syne', sans-serif;
+    font-size: 26px; font-weight: 800;
+    line-height: 1;
+  }
+  .stat-val.pos { color: var(--pos); }
+  .stat-val.neg { color: var(--neg); }
+  .stat-val.neu { color: var(--neu); }
+  .stat-lbl {
+    font-size: 10px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 1.5px;
+    margin-top: 6px;
+  }
+
+  /* ── Model info footer ── */
+  .model-footer {
+    margin-top: 48px;
+    padding: 24px 32px;
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    display: flex; align-items: center; gap: 24px;
+    animation: fadeUp 0.6s 0.5s ease both;
+  }
+  .model-icon {
+    width: 48px; height: 48px; border-radius: 12px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; flex-shrink: 0;
+  }
+  .model-info { flex: 1; }
+  .model-name {
+    font-family: 'Syne', sans-serif;
+    font-size: 14px; font-weight: 700; margin-bottom: 4px;
+  }
+  .model-desc { font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .model-pills { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pill {
+    padding: 4px 10px; border-radius: 100px;
+    border: 1px solid var(--border2);
+    font-size: 11px; color: var(--muted);
+    font-family: 'DM Mono', monospace;
+  }
+  /* ── Pipeline display ── */
+  .pipeline-box {
+      margin-top: 20px;
+      padding: 18px 20px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--border);
+      display: none;
+  }
+  .pipeline-box.visible { display: block; }
+  .pipeline-row {
+      display: flex; flex-direction: column; gap: 6px;
+      margin-bottom: 14px;
+  }
+  .pipeline-row:last-child { margin-bottom: 0; }
+  .pipeline-lbl {
+      font-size: 10px; font-weight: 700;
+      letter-spacing: 2px; text-transform: uppercase;
+      color: var(--muted);
+  }
+  .pipeline-val {
+      font-family: 'DM Mono', monospace;
+      font-size: 12px; color: var(--accent2);
+      line-height: 1.6; word-break: break-word;
+      background: rgba(167,139,250,0.05);
+      padding: 10px 14px; border-radius: 8px;
+      border: 1px solid rgba(167,139,250,0.12);
+  }
+  .pipeline-val .tag-en  { color: var(--accent);  }
+  .pipeline-val .tag-hi  { color: var(--pos);      }
+  .pipeline-val .tag-pos { color: var(--pos);      }
+  .pipeline-val .tag-neg { color: var(--neg);      }
+  .pipeline-arrow {
+      text-align: center; color: var(--muted);
+      font-size: 11px; margin: 2px 0;
+  }
+
+  /* ── Animations ── */
+  @keyframes fadeDown {
+    from { opacity: 0; transform: translateY(-16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+  @keyframes popIn {
+    0%   { transform: scale(0.7); opacity: 0; }
+    60%  { transform: scale(1.1); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .pop { animation: popIn 0.5s cubic-bezier(0.16,1,0.3,1) both; }
+
+  /* ── Divider ── */
+  .divider {
+    height: 1px; background: var(--border);
+    margin: 24px 0;
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 768px) {
+    .main-grid { grid-template-columns: 1fr; }
+    .stats-strip { grid-template-columns: repeat(3, 1fr); }
+    header { flex-direction: column; gap: 16px; }
+    .model-footer { flex-direction: column; text-align: center; }
+    .model-pills { justify-content: center; }
+  }
+</style>
+</head>
+<body>
+
+<div class="blob blob-1"></div>
+<div class="blob blob-2"></div>
+<div class="blob blob-3"></div>
+
+<div class="shell">
+
+  <!-- Header -->
+  <header>
+    <div class="logo-group">
+      <div class="logo">Hinglish<span>Sense</span></div>
+      <div class="tagline">Code-Switch Sentiment Analysis</div>
+    </div>
+    <div class="badge">XLM-R · Gate + Warm Init · 83.08%</div>
+  </header>
+
+  <!-- Main grid -->
+  <div class="main-grid">
+
+    <!-- Left: Input -->
+    <div>
+      <div class="card input-card">
+        <div class="card-label">Input Text</div>
+
+        <div class="input-wrap">
+          <textarea
+            id="inputText"
+            placeholder="Type Hinglish text here… e.g. yaar ye movie ekdum bakwaas thi, time waste ho gaya"
+            maxlength="500"
+            oninput="updateChar()"
+          ></textarea>
+          <span class="char-count" id="charCount">0 / 500</span>
+        </div>
+
+        <div class="examples-label">Try an example</div>
+        <div class="chips" id="chips"></div>
+
+        <button class="btn-analyze idle" id="analyzeBtn" onclick="analyze()">
+          <div class="btn-text">
+            <div class="spinner"></div>
+            <span class="btn-label">✦ Analyze Sentiment</span>
+          </div>
+        </button>
+        <!-- Pipeline display -->
+        <div class="pipeline-box" id="pipelineBox">
+            <div class="card-label" style="margin-bottom:14px">Preprocessing Pipeline</div>
+            <div class="pipeline-row">
+                <div class="pipeline-lbl">① Raw Input</div>
+                <div class="pipeline-val" id="pipeRaw"></div>
+            </div>
+            <div class="pipeline-arrow">↓ language tag + sentiment tag + stopword removal</div>
+            <div class="pipeline-row">
+                <div class="pipeline-lbl">② Tagged Text</div>
+                <div class="pipeline-val" id="pipeTagged"></div>
+            </div>
+            <div class="pipeline-arrow">↓ expand tags for transformer</div>
+            <div class="pipeline-row">
+                <div class="pipeline-lbl">③ Final Model Input</div>
+                <div class="pipeline-val" id="pipeModel"></div>
+            </div>
+        </div>
+      </div>
+
+      <!-- Stats strip -->
+      <div class="stats-strip">
+        <div class="stat-card">
+          <div class="stat-val pos" id="statPos">0</div>
+          <div class="stat-lbl">Positive</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-val neg" id="statNeg">0</div>
+          <div class="stat-lbl">Negative</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-val neu" id="statNeu">0</div>
+          <div class="stat-lbl">Neutral</div>
+        </div>
+      </div>
+
+      <!-- History -->
+      <div class="history-section" id="historySection" style="display:none">
+        <div class="history-header">
+          <div class="section-title">Recent Analyses</div>
+          <button class="btn-clear" onclick="clearHistory()">Clear all</button>
+        </div>
+        <div class="history-list" id="historyList"></div>
+      </div>
+    </div>
+
+    <!-- Right: Results -->
+    <div class="results-panel">
+      <div class="card">
+        <div class="card-label">Result</div>
+
+        <!-- Empty state -->
+        <div class="empty-state" id="emptyState">
+          <div class="empty-icon">◎</div>
+          <div class="empty-text">Enter Hinglish text and click Analyze to see sentiment</div>
+        </div>
+
+        <!-- Result hero -->
+        <div class="result-hero" id="resultHero" style="display:none">
+          <div class="sentiment-icon" id="sentimentIcon"></div>
+          <div class="sentiment-label" id="sentimentLabel"></div>
+          <div class="confidence-text" id="confidenceText"></div>
+        </div>
+
+        <div class="divider" id="resultDivider" style="display:none"></div>
+
+        <!-- Confidence bars -->
+        <div class="conf-bars" id="confBars" style="display:none">
+          <div class="card-label" style="margin-bottom:16px">Class Probabilities</div>
+          <div class="conf-row">
+            <div class="conf-meta">
+              <span class="conf-name" style="color:var(--pos)">Positive</span>
+              <span class="conf-val" id="posVal">0%</span>
+            </div>
+            <div class="conf-track"><div class="conf-fill fill-pos" id="posBar"></div></div>
+          </div>
+          <div class="conf-row">
+            <div class="conf-meta">
+              <span class="conf-name" style="color:var(--neu)">Neutral</span>
+              <span class="conf-val" id="neuVal">0%</span>
+            </div>
+            <div class="conf-track"><div class="conf-fill fill-neu" id="neuBar"></div></div>
+          </div>
+          <div class="conf-row">
+            <div class="conf-meta">
+              <span class="conf-name" style="color:var(--neg)">Negative</span>
+              <span class="conf-val" id="negVal">0%</span>
+            </div>
+            <div class="conf-track"><div class="conf-fill fill-neg" id="negBar"></div></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Model info footer -->
+  <div class="model-footer">
+    <div class="model-icon">🧠</div>
+    <div class="model-info">
+      <div class="model-name">XLM-RoBERTa + Language-Aware Gate + Warm-Init Embeddings</div>
+      <div class="model-desc">Fine-tuned on combined Hinglish dataset with token augmentation, linguistically-seeded special token embeddings, and a language-aware attention gating mechanism for code-switched sentiment classification.</div>
+    </div>
+    <div class="model-pills">
+      <div class="pill">Accuracy 83.08%</div>
+      <div class="pill">F1 82.95%</div>
+      <div class="pill">3 Classes</div>
+      <div class="pill">XLM-R Base</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── Examples ──────────────────────────────────────────────────────
+const EXAMPLES = [
+  { text: "yaar ye movie ekdum bakwaas thi, time waste ho gaya", label: "negative" },
+  { text: "bhai aaj ka din bahut accha tha, sab kuch perfect raha!", label: "positive" },
+  { text: "theek hai, kuch khaas nahi tha lekin bura bhi nahi", label: "neutral" },
+  { text: "isko dekhke dil khush ho gaya, zabardast performance!", label: "positive" },
+  { text: "bohot bura laga yaar, bilkul nahi acha laga ye sab", label: "negative" },
+  { text: "kal meeting hai office mein, bas normal din hai", label: "neutral" },
+];
+
+// ── Simulated inference (replace with real API call) ───────────────
+// To connect to your real model, replace `simulateInference` with a
+// fetch() call to your Flask/FastAPI backend running the saved model.
+//
+// Example real backend call:
+ async function realInference(text) {
+   const res = await fetch('http://localhost:5000/predict', {
+     method: 'POST',
+     headers: {'Content-Type':'application/json'},
+     body: JSON.stringify({text})
+   });
+   return await res.json();
+ }
+
+function showPipeline(raw, tagged, modelInput) {
+    document.getElementById('pipelineBox').classList.add('visible');
+    document.getElementById('pipeRaw').textContent = raw;
+
+    // Colorize tagged text  e.g. class_EN → class in blue, acha_HI → green
+    document.getElementById('pipeTagged').innerHTML = tagged
+        .split(' ')
+        .map(token => {
+            if (token.endsWith('_EN'))  return `<span class="tag-en">${token}</span>`;
+            if (token.endsWith('_HI'))  return `<span class="tag-hi">${token}</span>`;
+            if (token.endsWith('_POS')) return `<span class="tag-pos">${token}</span>`;
+            if (token.endsWith('_NEG')) return `<span class="tag-neg">${token}</span>`;
+            return token;
+        })
+        .join(' ');
+
+    // Colorize model input  e.g. <EN> in blue, <HI> in green
+    document.getElementById('pipeModel').innerHTML = modelInput
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/&lt;EN&gt;/g,  '<span class="tag-en">&lt;EN&gt;</span>')
+        .replace(/&lt;HI&gt;/g,  '<span class="tag-hi">&lt;HI&gt;</span>')
+        .replace(/&lt;POS&gt;/g, '<span class="tag-pos">&lt;POS&gt;</span>')
+        .replace(/&lt;NEG&gt;/g, '<span class="tag-neg">&lt;NEG&gt;</span>');
+}
+
+function simulateInference(text) {
+  const t = text.toLowerCase();
+  let pos = 0.1, neg = 0.1, neu = 0.1;
+
+  const posWords = ["accha","acha","zabardast","khush","pyaar","love","great","perfect","best","amazing","sundar","mast","badhiya","wah","shandar","lovely","happy","fantastic","wonderful","excellent"];
+  const negWords = ["bakwaas","bura","nahi","kharab","bekar","hate","worst","terrible","sad","gussa","horrible","disgusting","boring","waste","awful","disgusting","dukh","rona"];
+  const neuWords = ["theek","bas","normal","matlab","kuch","tha","hai","ho","kar","meeting","office","din","kal","aaj","toh"];
+
+  const words = t.split(/\s+/);
+  words.forEach(w => {
+    if (posWords.some(p => w.includes(p))) pos += 0.35;
+    if (negWords.some(n => w.includes(n))) neg += 0.35;
+    if (neuWords.some(n => w.includes(n))) neu += 0.08;
+  });
+
+  // Normalize softmax-style
+  const expPos = Math.exp(pos * 2);
+  const expNeg = Math.exp(neg * 2);
+  const expNeu = Math.exp(neu * 1.5);
+  const total  = expPos + expNeg + expNeu;
+
+  const scores = {
+    positive: (expPos / total * 100),
+    negative: (expNeg / total * 100),
+    neutral:  (expNeu / total * 100),
+  };
+
+  const sentiment = Object.entries(scores).sort((a,b) => b[1]-a[1])[0][0];
+  return { sentiment, confidence: scores[sentiment].toFixed(1), scores };
+}
+
+// ── State ──────────────────────────────────────────────────────────
+let history = [];
+let stats   = { positive: 0, negative: 0, neutral: 0 };
+
+// ── Init chips ────────────────────────────────────────────────────
+const chipsEl = document.getElementById('chips');
+EXAMPLES.forEach(ex => {
+  const chip = document.createElement('button');
+  chip.className = 'chip';
+  chip.textContent = ex.text.length > 38 ? ex.text.slice(0,38)+'…' : ex.text;
+  chip.onclick = () => {
+    document.getElementById('inputText').value = ex.text;
+    updateChar();
+  };
+  chipsEl.appendChild(chip);
+});
+
+function updateChar() {
+  const v = document.getElementById('inputText').value.length;
+  document.getElementById('charCount').textContent = `${v} / 500`;
+}
+
+// ── Main analyze ──────────────────────────────────────────────────
+async function analyze() {
+    const text = document.getElementById('inputText').value.trim();
+    if (!text) return;
+
+    const btn = document.getElementById('analyzeBtn');
+    btn.className = 'btn-analyze loading';
+
+    const result = await realInference(text);
+
+    btn.className = 'btn-analyze idle';
+
+    // Show preprocessing pipeline
+    showPipeline(text, result.tagged_text, result.model_input);
+    showResult(result, text);
+    addToHistory(text, result);
+    updateStats(result.sentiment);
+}
+
+// ── Show result ───────────────────────────────────────────────────
+const ICONS = { positive: '😊', negative: '😞', neutral: '😐' };
+const LABELS = { positive: 'Positive', negative: 'Negative', neutral: 'Neutral' };
+
+function showResult(result, text) {
+  const hero    = document.getElementById('resultHero');
+  const divider = document.getElementById('resultDivider');
+  const bars    = document.getElementById('confBars');
+  document.getElementById('emptyState').style.display = 'none';
+
+  hero.className = `result-hero ${result.sentiment} pop`;
+  hero.style.display = 'flex';
+  divider.style.display = 'block';
+  bars.style.display = 'flex';
+
+  document.getElementById('sentimentIcon').textContent  = ICONS[result.sentiment];
+  document.getElementById('sentimentLabel').textContent = LABELS[result.sentiment];
+  document.getElementById('confidenceText').textContent = `${result.confidence}% confidence`;
+
+  // Animate bars after brief delay
+  setTimeout(() => {
+    const s = result.scores;
+    document.getElementById('posBar').style.width = s.positive.toFixed(1) + '%';
+    document.getElementById('neuBar').style.width = s.neutral.toFixed(1)  + '%';
+    document.getElementById('negBar').style.width = s.negative.toFixed(1) + '%';
+    document.getElementById('posVal').textContent = s.positive.toFixed(1) + '%';
+    document.getElementById('neuVal').textContent = s.neutral.toFixed(1)  + '%';
+    document.getElementById('negVal').textContent = s.negative.toFixed(1) + '%';
+  }, 100);
+}
+
+// ── History ───────────────────────────────────────────────────────
+function addToHistory(text, result) {
+  history.unshift({ text, result });
+  if (history.length > 6) history.pop();
+  renderHistory();
+}
+
+function renderHistory() {
+  const section = document.getElementById('historySection');
+  const list    = document.getElementById('historyList');
+  if (!history.length) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+  list.innerHTML = '';
+  history.forEach((h, i) => {
+    const item = document.createElement('div');
+    item.className = 'history-item';
+    item.style.animationDelay = `${i * 0.05}s`;
+    item.innerHTML = `
+      <div class="h-dot ${h.result.sentiment}"></div>
+      <div class="h-text">${h.text}</div>
+      <div class="h-badge ${h.result.sentiment}">${h.result.sentiment}</div>
+    `;
+    item.onclick = () => {
+      document.getElementById('inputText').value = h.text;
+      updateChar();
+      showResult(h.result, h.text);
+    };
+    list.appendChild(item);
+  });
+}
+
+function clearHistory() {
+  history = [];
+  renderHistory();
+}
+
+// ── Stats ─────────────────────────────────────────────────────────
+function updateStats(sentiment) {
+  stats[sentiment]++;
+  document.getElementById('statPos').textContent = stats.positive;
+  document.getElementById('statNeg').textContent = stats.negative;
+  document.getElementById('statNeu').textContent = stats.neutral;
+}
+
+// ── Enter key shortcut ────────────────────────────────────────────
+document.getElementById('inputText').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) analyze();
+});
+</script>
+
+</body>
+</html>
