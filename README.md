@@ -117,9 +117,9 @@ Per-class F1: **Positive 86.1%**, **Negative 84.7%**, **Neutral 78.4%** (neutral
 
 ## 👥 Authors
 
+- Sahaj Sharma — NSUT — sahaj.sharma.ug23@nsut.ac.in
 - Aditya — NSUT — aditya-ug23@nsut.ac.in
 - Goutam Jain — NSUT — goutam.jain.ug23@nsut.ac.in
-- Sahaj Sharma — NSUT — sahaj.sharma.ug23@nsut.ac.in
 
 Netaji Subhas University of Technology (NSUT), Delhi, India
 
